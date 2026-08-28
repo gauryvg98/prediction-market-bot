@@ -1,0 +1,186 @@
+{
+  "signature": "2qM2hMUxZ6zQg24QNNSDvvPfpAbtbDRBmpy8gfmH4Sz2LzbXRfMcbi6H68BwKpU4xm56LHgqeueDdY5w9TXPQy9b",
+  "instruction": "DFlow.swap_with_destination",
+  "discriminator": "a8ac184dc59c8765",
+  "route_action_count": 3,
+  "signer_pays_cash": "EAhEjBhKpn2mnDTsdHgWFkJS4cRgBktV31q46g4htCf5",
+  "position_held_by": "DKkYnxbw1a6kxYTAtxme6NsJA6hfnGJ6EnZ3J2ABUSaE",
+  "outcome_mint": "DzFuiAbCmPG54pcLR4b53QqKt22icGGfoZ1ABFeAvWXk",
+  "cash_spent": 16.839805,
+  "tokens_received": 68.697125,
+  "price": 0.24513,
+  "account_roster": [
+    {
+      "pos": 0,
+      "addr": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+    },
+    {
+      "pos": 1,
+      "addr": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+    },
+    {
+      "pos": 2,
+      "addr": "11111111111111111111111111111111"
+    },
+    {
+      "pos": 3,
+      "addr": "EAhEjBhKpn2mnDTsdHgWFkJS4cRgBktV31q46g4htCf5"
+    },
+    {
+      "pos": 4,
+      "addr": "9VDQYaL5RzB8RWX2xsYwUXviYEqfCBt7buxjogAGP3AN"
+    },
+    {
+      "pos": 5,
+      "addr": "DKkYnxbw1a6kxYTAtxme6NsJA6hfnGJ6EnZ3J2ABUSaE"
+    },
+    {
+      "pos": 6,
+      "addr": "DzFuiAbCmPG54pcLR4b53QqKt22icGGfoZ1ABFeAvWXk"
+    },
+    {
+      "pos": 7,
+      "addr": "8xeaWCsJYxRoudEZGJWURdfrtFhLYZz9b4iHJnW5tb3d"
+    },
+    {
+      "pos": 8,
+      "addr": "DF1ow4tspfHX9JwWJsAb9epbkA8hmpSEAtxXy1V27QBH"
+    },
+    {
+      "pos": 9,
+      "addr": "CoRVRhVtRkanHVom1HhBpmN2PFrPv2pr7Q2pwj584h9j"
+    },
+    {
+      "pos": 10,
+      "addr": "Sysvar1nstructions1111111111111111111111111"
+    },
+    {
+      "pos": 11,
+      "addr": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+    },
+    {
+      "pos": 12,
+      "addr": "CASHx9KJUStyftLFWGvEVf59SGeG9sh5FfcnZMVPCASH"
+    },
+    {
+      "pos": 13,
+      "addr": "DzFuiAbCmPG54pcLR4b53QqKt22icGGfoZ1ABFeAvWXk"
+    },
+    {
+      "pos": 14,
+      "addr": "BDetFLz5U4g85fh5tWVM8ugqS31VwE97dNAVnaBmCbyY"
+    },
+    {
+      "pos": 15,
+      "addr": "DKkYnxbw1a6kxYTAtxme6NsJA6hfnGJ6EnZ3J2ABUSaE"
+    },
+    {
+      "pos": 16,
+      "addr": "CASHx9KJUStyftLFWGvEVf59SGeG9sh5FfcnZMVPCASH"
+    },
+    {
+      "pos": 17,
+      "addr": "DKkYnxbw1a6kxYTAtxme6NsJA6hfnGJ6EnZ3J2ABUSaE"
+    },
+    {
+      "pos": 18,
+      "addr": "EAhEjBhKpn2mnDTsdHgWFkJS4cRgBktV31q46g4htCf5"
+    },
+    {
+      "pos": 19,
+      "addr": "2ktpV3uVowhw582C7NBFYvTfUPLnECRQzLh2SiDySnFs"
+    },
+    {
+      "pos": 20,
+      "addr": "3ppcGFRj1qgeeSvETbvegZ5RtfLZgsgwNkQPGJNkp8Kq"
+    },
+    {
+      "pos": 21,
+      "addr": "3mT5sCzPCXkfaLVxa6pJso8FS8odyTSdZKh38Xv4yB9f"
+    },
+    {
+      "pos": 22,
+      "addr": "6k5s8gbhB2Mmq7M72dyWeVB3aDTmXqoXgVaqC77NYZ1v"
+    },
+    {
+      "pos": 23,
+      "addr": "DzFuiAbCmPG54pcLR4b53QqKt22icGGfoZ1ABFeAvWXk"
+    },
+    {
+      "pos": 24,
+      "addr": "CASHx9KJUStyftLFWGvEVf59SGeG9sh5FfcnZMVPCASH"
+    },
+    {
+      "pos": 25,
+      "addr": "FCQGQvzEasGbmT6QYxW1r1HvEEX7bGYguhXbH2HTsCjT"
+    },
+    {
+      "pos": 26,
+      "addr": "prediCtPZCttYMvm2W3PtxmMxLmT1dtN7riU6Cxh6tM"
+    },
+    {
+      "pos": 27,
+      "addr": "8ZjzUhmxDREvwhYfoGYsfsvhLHoKy2BLA5iLCm1GZGVT"
+    },
+    {
+      "pos": 28,
+      "addr": "DzWavJgwnpVrkH56THbyErmHJ97naGTbVqZw2uocMYVh"
+    },
+    {
+      "pos": 29,
+      "addr": "DF1ow4tspfHX9JwWJsAb9epbkA8hmpSEAtxXy1V27QBH"
+    },
+    {
+      "pos": 30,
+      "addr": "Tri3NG4HkZ6DddYPKoX2ehgkqFtDuej9Aspw5BmvSo4"
+    },
+    {
+      "pos": 31,
+      "addr": "6Ym2C1s4YUMNTX8Pe9AYJANJufoGbuV9p9FWouASXHgY"
+    },
+    {
+      "pos": 32,
+      "addr": "Fw7d4wF9mCvbmsgEfvXRrgBiocTbEzKiHwheBNJXhDrh"
+    },
+    {
+      "pos": 33,
+      "addr": "CyvJTKESPXkUjqGg2oycLunoDTcDon4aoppZphZUPFRt"
+    },
+    {
+      "pos": 34,
+      "addr": "2sJqmd2h3YnBgaMT1aWnQRxJSv3RykYp3H4CTatAGEwf"
+    },
+    {
+      "pos": 35,
+      "addr": "Ae52671Qs6UYCdvCmiEw3DVSNq3yfjMaZ3AjQHxJkw24"
+    },
+    {
+      "pos": 36,
+      "addr": "2DNbzPochEcyCcWMbL4d9S3u9QqQEj5bbe6cSZFvKsbh"
+    },
+    {
+      "pos": 37,
+      "addr": "2SNMRf5VjriaafXaHwrazrQ3JQok5CH6cTN4ABk38Rco"
+    },
+    {
+      "pos": 38,
+      "addr": "GK6De6hTfzMPbBbQTAnnEE6SysPd3ZX9epWJAkT4DTjq"
+    },
+    {
+      "pos": 39,
+      "addr": "2NwDnAydte8EWo8sXnp2n4bJpGVCNLM5itep6E3Uq7BJ"
+    },
+    {
+      "pos": 40,
+      "addr": "FdnbKiqCqB6xBwA1XwLEpweGxjsQZ1gBeRyERxBnjwwU"
+    },
+    {
+      "pos": 41,
+      "addr": "7ZqA8dqjSE95wa6Nr2hSigwJ4bYLALjzjSjcSBFo7TCR"
+    },
+    {
+      "pos": 42,
+      "addr": "FPUtHn2WnuDQaQg4N3Cexd64EoGErz2BfWd17KHC2EUg"
+    }
+  ]
+}
