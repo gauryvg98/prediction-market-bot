@@ -72,13 +72,20 @@ equivalent choices.
 
 Put both HTTP and WS URLs in `.env` (see `.env.example`).
 
-### 2. DFlow API key — the hard gate, apply today
+### 2. DFlow API key — apply, but it is not a wall
 
-Single-leg buys and sells route through DFlow's Trading API, which needs an
-`x-api-key` with **2–5 day approval** (`pond.dflow.net/build/api-key`). The keyless
-dev endpoint returns `route_not_found` for World's mints, so there is no way around
-it. **Nothing live works without this**, and its lead time is the long pole — apply
-before anything else.
+Apply at `pond.dflow.net/build/api-key` (free, 2–5 day approval). It removes real
+reverse-engineering work and there is no downside to having it.
+
+**It is not, however, a permission gate.** DFlow's on-chain IDL shows `swap` takes
+exactly one signer — the user — and publishes the `OpenPredictionsOrder` action
+that encodes a prediction-market order. The maker never co-signs and cannot
+refuse. What the API sells is price discovery and a pre-built transaction, not
+authorization. Self-routing costs a few days of decoding the remaining-accounts
+layout from public mainnet transactions, and buys independence from anyone's
+approval — plus a genuine limit price, which suits a strategy built on patience.
+
+See [docs/execution-paths.md](docs/execution-paths.md).
 
 ### 3. Bitquery token — optional, saves real work
 
