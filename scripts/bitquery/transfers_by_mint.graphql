@@ -1,0 +1,16 @@
+# One round's entire trade history: replace <OUTCOME_MINT> with a market's YES or NO
+# mint (from prediCt initialize_market, or the Market account's offset 72 / 104).
+# Pair each row with the CASH leg in the same signature to get the fill price.
+{
+  Solana {
+    Transfers(
+      where: { Transfer: { Currency: { MintAddress: { is: "<OUTCOME_MINT>" } } } }
+      limit: { count: 200 }
+      orderBy: { descending: Block_Time }
+    ) {
+      Block { Time }
+      Transaction { Signature Signer }
+      Transfer { Amount Sender { Address } Receiver { Address } }
+    }
+  }
+}

@@ -1,0 +1,17 @@
+# Recent CASH transfer legs. Join by Transaction.Signature with the outcome-token
+# legs (transfers_by_mint) to recover each trade's price. CASH is Token-2022, so
+# this MUST use Transfers, not InstructionBalanceUpdates (which returns 0 for it).
+{
+  Solana {
+    Transfers(
+      where: { Transfer: { Currency: { MintAddress: {
+        is: "CASHx9KJUStyftLFWGvEVf59SGeG9sh5FfcnZMVPCASH" } } } }
+      limit: { count: 100 }
+      orderBy: { descending: Block_Time }
+    ) {
+      Block { Time }
+      Transaction { Signature Signer }
+      Transfer { Amount Sender { Address } Receiver { Address } }
+    }
+  }
+}
