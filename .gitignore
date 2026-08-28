@@ -1,0 +1,9 @@
+/bin/
+*.json.key
+*.keypair
+.env
+.env.*
+!.env.example
+/data/
+*.log
+.DS_Store
