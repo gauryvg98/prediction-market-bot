@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/gauryvg98/prediction-bot/internal/bitquery"
+	"github.com/gauryvg98/prediction-bot/internal/solana"
 	"github.com/gauryvg98/prediction-bot/internal/feed"
 	"github.com/gauryvg98/prediction-bot/internal/paper"
 )
@@ -31,7 +32,8 @@ func main() {
 	stake := flag.Float64("stake", 10, "paper CASH stake per entry")
 	verbose := flag.Bool("v", false, "log every event, not just entries and locks")
 	seed := flag.Int64("seed", 1, "RNG seed for the synthetic feed")
-	source := flag.String("source", "synthetic", "synthetic | bitquery | file")
+	source := flag.String("source", "synthetic", "synthetic | solana | bitquery | file")
+	sigs := flag.Int("sigs", 300, "solana: prediCt sigs to scan")
 	file := flag.String("file", "data/fills.jsonl", "accumulated tape for -source file")
 	minutes := flag.Int("minutes", 25, "bitquery: look-back window in minutes")
 	flag.Parse()
@@ -55,6 +57,24 @@ func main() {
 		bq, err := feed.LoadBitquery(ctx, bitquery.New(token), *minutes, 15)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "load bitquery feed:", err)
+			os.Exit(1)
+		}
+		src = bq
+	case "solana":
+		url := os.Getenv("SOLANA_RPC_URL")
+		if url == "" {
+			fmt.Fprintln(os.Stderr, "set SOLANA_RPC_URL (Helius) for -source solana")
+			os.Exit(1)
+		}
+		cfg.RawEntry = true
+		cfg.Signal.MinSecondsLeft = 15 // observed tape is a slice; expiry is understated
+		cfg.Signal.MaxEntryPrice = 0.70
+		fmt.Printf("paper run on LIVE Solana tape via RPC, stake $%.0f\n\n", cfg.Stake)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+		bq, err := feed.LoadSolana(ctx, solana.New(url), *sigs, 0, 15)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "load solana feed:", err)
 			os.Exit(1)
 		}
 		src = bq
