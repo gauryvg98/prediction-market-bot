@@ -116,6 +116,7 @@ type Config struct {
 	Signal        signal.Params
 	Stake         float64 // paper CASH committed on the entry leg
 	HedgeDeadline float64 // seconds-to-expiry at/under which we stop waiting and go naked
+	RawEntry      bool    // book-only entry (no vol gate) -- for tape replay without per-asset spot
 }
 
 // DefaultConfig mirrors the strict signal defaults and a $10 paper stake.
@@ -159,6 +160,9 @@ func (e *Engine) OnTick(t Tick) []Event {
 }
 
 func (e *Engine) tryEnter(st *roundState, t Tick) []Event {
+	if e.cfg.RawEntry {
+		return e.tryEnterRaw(st, t)
+	}
 	in := signal.Inputs{
 		Spot: t.Spot, Strike: t.Strike, SecondsToExpiry: t.SecondsToExpiry,
 		Book: t.Book, RealizedVol: t.RealizedVol, Fees: e.cfg.Fees,
@@ -185,6 +189,47 @@ func (e *Engine) tryEnter(st *roundState, t Tick) []Event {
 	st.phase = OneLeg
 	ev := Event{Kind: Enter, RoundID: t.RoundID, Side: d.Side, Price: price, Qty: payout,
 		Note: d.Reason}
+	e.Ledger.record(ev)
+	return []Event{ev}
+}
+
+// tryEnterRaw is the book-only entry used for tape replay: buy the cheaper side
+// when it sits in the entry band, there is time left, and a hedge could lock.
+// No volatility gate -- that needs per-asset spot the raw tape does not carry.
+// This measures the pure LOCK mechanic on real prices: given an entry, how often
+// does a hedge actually become available?
+func (e *Engine) tryEnterRaw(st *roundState, t Tick) []Event {
+	e.Ledger.Evaluated++
+	if t.SecondsToExpiry < e.cfg.Signal.MinSecondsLeft {
+		return nil
+	}
+	up, uok := t.Book.Best(market.Up)
+	dn, dok := t.Book.Best(market.Down)
+	if !uok || !dok {
+		return nil
+	}
+	side, price := market.Up, up
+	if dn < up {
+		side, price = market.Down, dn
+	}
+	if price < e.cfg.Signal.MinEntryPrice || price > e.cfg.Signal.MaxEntryPrice {
+		return nil
+	}
+	if lock.RequiredHedgePrice(price, e.cfg.Fees, e.cfg.Signal.MinLockEdge) <= 0 {
+		return nil
+	}
+	e.Ledger.Entered++
+	payout := e.cfg.Stake / price
+	leg := &lock.Leg{Outcome: side, Cost: e.cfg.Stake, Payout: payout}
+	st.entry = leg
+	if side == market.Up {
+		st.pos.Up = leg
+	} else {
+		st.pos.Down = leg
+	}
+	st.phase = OneLeg
+	ev := Event{Kind: Enter, RoundID: t.RoundID, Side: side, Price: price, Qty: payout,
+		Note: fmt.Sprintf("raw entry: cheaper side @ %.4f", price)}
 	e.Ledger.record(ev)
 	return []Event{ev}
 }

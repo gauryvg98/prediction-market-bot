@@ -14,9 +14,13 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
+	"os"
+	"time"
 
+	"github.com/gauryvg98/prediction-bot/internal/bitquery"
 	"github.com/gauryvg98/prediction-bot/internal/feed"
 	"github.com/gauryvg98/prediction-bot/internal/paper"
 )
@@ -27,21 +31,52 @@ func main() {
 	stake := flag.Float64("stake", 10, "paper CASH stake per entry")
 	verbose := flag.Bool("v", false, "log every event, not just entries and locks")
 	seed := flag.Int64("seed", 1, "RNG seed for the synthetic feed")
+	source := flag.String("source", "synthetic", "synthetic | bitquery | file")
+	file := flag.String("file", "data/fills.jsonl", "accumulated tape for -source file")
+	minutes := flag.Int("minutes", 25, "bitquery: look-back window in minutes")
 	flag.Parse()
-
-	sc := feed.DefaultSynth()
-	sc.Rounds = *rounds
-	sc.ImpliedBias = *bias
-	sc.Seed = *seed
-	src := feed.NewSynthetic(sc)
 
 	cfg := paper.DefaultConfig()
 	cfg.Stake = *stake
 	eng := paper.New(cfg)
 
-	fmt.Printf("paper run: %d rounds, %.0fs each, maker bias %.2f, stake $%.0f\n",
-		sc.Rounds, sc.DurationSec, sc.ImpliedBias, cfg.Stake)
-	fmt.Printf("(bias 1.0 = fair market; the honest default is mostly SKIP)\n\n")
+	var src feed.Feed
+	switch *source {
+	case "bitquery":
+		token := os.Getenv("BITQUERY_TOKEN")
+		if token == "" {
+			fmt.Fprintln(os.Stderr, "set BITQUERY_TOKEN for -source bitquery")
+			os.Exit(1)
+		}
+		fmt.Printf("paper run on LIVE Bitquery tape (last %d min), stake $%.0f\n\n", *minutes, cfg.Stake)
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+		defer cancel()
+		cfg.RawEntry = true
+		bq, err := feed.LoadBitquery(ctx, bitquery.New(token), *minutes, 15)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "load bitquery feed:", err)
+			os.Exit(1)
+		}
+		src = bq
+	case "file":
+		cfg.RawEntry = true
+		fmt.Printf("paper run on ACCUMULATED real tape %s, stake $%.0f\n\n", *file, cfg.Stake)
+		bq, err := feed.LoadFile(*file, 15)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "load file feed:", err)
+			os.Exit(1)
+		}
+		src = bq
+	default:
+		sc := feed.DefaultSynth()
+		sc.Rounds = *rounds
+		sc.ImpliedBias = *bias
+		sc.Seed = *seed
+		src = feed.NewSynthetic(sc)
+		fmt.Printf("paper run: %d synthetic rounds, maker bias %.2f, stake $%.0f\n", sc.Rounds, sc.ImpliedBias, cfg.Stake)
+		fmt.Printf("(bias 1.0 = fair market; the honest default is mostly SKIP)\n\n")
+	}
+	_ = rounds; _ = bias; _ = seed
 
 	for {
 		r, ok := src.Next()

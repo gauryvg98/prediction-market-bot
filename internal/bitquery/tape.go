@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"time"
 )
 
 // Bitquery returns numeric Amounts as JSON strings; parse defensively.
@@ -116,7 +117,10 @@ func (c *Client) RecentFills(ctx context.Context, sinceISO string, cashLimit, ma
 	var fills []Fill
 	makers := map[string]bool{JanusMaker: true, BisonMaker: true}
 	_ = makers
-	for _, sig := range sigs {
+	for i, sig := range sigs {
+		if i > 0 {
+			time.Sleep(2 * time.Second) // pace under Bitquery's per-minute limit
+		}
 		tl, err := c.TxLegs(ctx, sig)
 		if err != nil {
 			continue
@@ -196,4 +200,197 @@ func absf(x float64) float64 {
 		return -x
 	}
 	return x
+}
+
+// --- bulk per-mint tape (rate-limit friendly: one query per mint) -----------
+
+// CashBySig pulls all CASH legs in a window in ONE query and maps signature ->
+// max CASH moved. This is the join table for pricing per-mint fills without a
+// query per trade.
+func (c *Client) CashBySig(ctx context.Context, sinceISO, tillISO string, limit int) (map[string]float64, error) {
+	q := fmt.Sprintf(`{ Solana { Transfers(
+		where: { Transfer: { Currency: { MintAddress: { is: "%s" } } }, Block: { Time: { since: "%s", till: "%s" } } }
+		limit: { count: %d } orderBy: { descending: Block_Time }
+	) { Transaction { Signature } Transfer { Amount } } } }`, CashMint, sinceISO, tillISO, limit)
+	var r struct {
+		Solana struct {
+			Transfers []struct {
+				Transaction struct{ Signature string }
+				Transfer    struct{ Amount string }
+			}
+		}
+	}
+	if err := c.Query(ctx, q, &r); err != nil {
+		return nil, err
+	}
+	m := map[string]float64{}
+	for _, t := range r.Solana.Transfers {
+		a := atof(t.Transfer.Amount)
+		if a > m[t.Transaction.Signature] {
+			m[t.Transaction.Signature] = a
+		}
+	}
+	return m, nil
+}
+
+// MintFills pulls every transfer of one outcome mint in a window (ONE query) and
+// prices each against the CASH map. This is the production path: a full per-side
+// price series in a single request, no per-signature expansion.
+func (c *Client) MintFills(ctx context.Context, mint, sinceISO, tillISO string, limit int, cash map[string]float64) ([]Fill, error) {
+	q := fmt.Sprintf(`{ Solana { Transfers(
+		where: { Transfer: { Currency: { MintAddress: { is: "%s" } } }, Block: { Time: { since: "%s", till: "%s" } } }
+		limit: { count: %d } orderBy: { descending: Block_Time }
+	) { Block { Time } Transaction { Signature Signer } Transfer { Amount Sender { Address } Receiver { Address } } } } }`,
+		mint, sinceISO, tillISO, limit)
+	var r struct{ Solana struct{ Transfers []rawTfHdr } }
+	if err := c.Query(ctx, q, &r); err != nil {
+		return nil, err
+	}
+	var out []Fill
+	for _, t := range r.Solana.Transfers {
+		sig := t.Transaction.Signature
+		csh := cash[sig]
+		tok := atof(t.Transfer.Amount)
+		if csh <= 0 || tok <= 0 {
+			continue
+		}
+		p := csh / tok
+		if !priceInBand(p) {
+			continue
+		}
+		out = append(out, Fill{TimeISO: t.Block.Time, Sig: sig, Taker: t.Transaction.Signer,
+			Mint: mint, Cash: csh, Tokens: tok, Buy: t.Transfer.Sender.Address != t.Transaction.Signer})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].TimeISO < out[j].TimeISO })
+	return out, nil
+}
+
+// OutcomeTransfers pulls every outcome-token transfer in a window in ONE query:
+// Token-2022 program, minus CASH. High-yield discovery of all live sides.
+func (c *Client) OutcomeTransfers(ctx context.Context, sinceISO, tillISO string, limit int) ([]Transfer, error) {
+	q := fmt.Sprintf(`{ Solana { Transfers(
+		where: { Transfer: { Currency: { ProgramAddress: { is: "%s" }, MintAddress: { not: "%s" } } }, Block: { Time: { since: "%s", till: "%s" } } }
+		limit: { count: %d } orderBy: { descending: Block_Time }
+	) { Block { Time } Transaction { Signature Signer } Transfer { Amount Currency { MintAddress } Sender { Address } Receiver { Address } } } } }`,
+		Token2022, CashMint, sinceISO, tillISO, limit)
+	var r struct{ Solana struct{ Transfers []rawTfHdr } }
+	if err := c.Query(ctx, q, &r); err != nil {
+		return nil, err
+	}
+	out := make([]Transfer, len(r.Solana.Transfers))
+	for i, t := range r.Solana.Transfers {
+		out[i] = t.toTransfer()
+	}
+	return out, nil
+}
+
+// FillsFromTape joins outcome transfers with a CASH map into priced fills.
+func FillsFromTape(outs []Transfer, cash map[string]float64) []Fill {
+	var fills []Fill
+	for _, t := range outs {
+		csh := cash[t.Signature]
+		if csh <= 0 || t.Amount <= 0 {
+			continue
+		}
+		p := csh / t.Amount
+		if !priceInBand(p) {
+			continue
+		}
+		fills = append(fills, Fill{TimeISO: t.TimeISO, Sig: t.Signature, Taker: t.Signer,
+			Mint: t.Mint, Cash: csh, Tokens: t.Amount, Buy: t.Sender != t.Signer})
+	}
+	sort.Slice(fills, func(i, j int) bool { return fills[i].TimeISO < fills[j].TimeISO })
+	return fills
+}
+
+// --- batched reconstruction (the production path) ---------------------------
+// Trades are a small fraction of CASH movements, so we scan many CASH sigs but
+// fetch their legs in BATCHES via a signature `in` filter -- high fidelity and
+// few queries. This is what makes live reconstruction viable under rate limits.
+
+func (c *Client) cashSigs(ctx context.Context, sinceISO, tillISO string, limit int) ([]string, error) {
+	q := fmt.Sprintf(`{ Solana { Transfers(
+		where: { Transfer: { Currency: { MintAddress: { is: "%s" } } }, Block: { Time: { since: "%s", till: "%s" } } }
+		limit: { count: %d } orderBy: { descending: Block_Time }
+	) { Transaction { Signature } } } }`, CashMint, sinceISO, tillISO, limit)
+	var r struct {
+		Solana struct {
+			Transfers []struct{ Transaction struct{ Signature string } }
+		}
+	}
+	if err := c.Query(ctx, q, &r); err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	var out []string
+	for _, t := range r.Solana.Transfers {
+		s := t.Transaction.Signature
+		if !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	return out, nil
+}
+
+func (c *Client) legsBatch(ctx context.Context, sigs []string) (map[string][]Transfer, error) {
+	quoted := make([]string, len(sigs))
+	for i, s := range sigs {
+		quoted[i] = `"` + s + `"`
+	}
+	inList := "[" + join(quoted, ",") + "]"
+	q := fmt.Sprintf(`{ Solana { Transfers(
+		where: { Transaction: { Signature: { in: %s } } } limit: { count: %d }
+	) { Transaction { Signature Signer } Transfer { Amount Currency { MintAddress ProgramAddress } Sender { Address } Receiver { Address } } } } }`,
+		inList, len(sigs)*25)
+	var r struct{ Solana struct{ Transfers []rawTfHdr } }
+	if err := c.Query(ctx, q, &r); err != nil {
+		return nil, err
+	}
+	bySig := map[string][]Transfer{}
+	for _, t := range r.Solana.Transfers {
+		tr := t.toTransfer()
+		bySig[tr.Signature] = append(bySig[tr.Signature], tr)
+	}
+	return bySig, nil
+}
+
+// RecentFillsBatched pulls up to `cashLimit` recent CASH signatures and prices
+// their trades in batches of 50 via the `in` filter. Returns clean priced fills.
+func (c *Client) RecentFillsBatched(ctx context.Context, sinceISO, tillISO string, cashLimit int) ([]Fill, error) {
+	sigs, err := c.cashSigs(ctx, sinceISO, tillISO, cashLimit)
+	if err != nil {
+		return nil, err
+	}
+	var fills []Fill
+	const batch = 50
+	for i := 0; i < len(sigs); i += batch {
+		j := i + batch
+		if j > len(sigs) {
+			j = len(sigs)
+		}
+		legs, err := c.legsBatch(ctx, sigs[i:j])
+		if err != nil {
+			continue
+		}
+		for _, ls := range legs {
+			if f, ok := priceTx(ls); ok {
+				fills = append(fills, f)
+			}
+		}
+		time.Sleep(1500 * time.Millisecond)
+	}
+	sort.Slice(fills, func(i, j int) bool { return fills[i].TimeISO < fills[j].TimeISO })
+	return fills, nil
+}
+
+func join(a []string, sep string) string {
+	if len(a) == 0 {
+		return ""
+	}
+	out := a[0]
+	for _, s := range a[1:] {
+		out += sep + s
+	}
+	return out
 }
