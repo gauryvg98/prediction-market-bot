@@ -33,16 +33,25 @@ const (
 type Client struct {
 	url      string
 	http     *http.Client
-	cacheDir string // getTransaction cache: a tx is immutable, so never re-fetch
+	cacheDir string     // getTransaction cache: a tx is immutable, so never re-fetch
+	limiter  <-chan time.Time // token bucket: stay under the free-tier rate limit
 }
 
 func New(url string) *Client {
-	c := &Client{url: url, http: &http.Client{Timeout: 30 * time.Second}, cacheDir: "data/txcache"}
+	c := &Client{url: url, http: &http.Client{Timeout: 30 * time.Second}, cacheDir: "data/txcache",
+		limiter: time.Tick(130 * time.Millisecond)} // ~7.7 req/s, safely under free-tier 10
 	_ = os.MkdirAll(c.cacheDir, 0o755)
 	return c
 }
 
 func (c *Client) call(ctx context.Context, method string, params any, out any) error {
+	if c.limiter != nil {
+		select {
+		case <-c.limiter:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
 	body, _ := json.Marshal(map[string]any{
 		"jsonrpc": "2.0", "id": 1, "method": method, "params": params,
 	})

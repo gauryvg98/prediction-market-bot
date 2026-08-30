@@ -40,7 +40,6 @@ func main() {
 
 	cfg := paper.DefaultConfig()
 	cfg.Stake = *stake
-	eng := paper.New(cfg)
 
 	var src feed.Feed
 	switch *source {
@@ -97,6 +96,8 @@ func main() {
 		fmt.Printf("(bias 1.0 = fair market; the honest default is mostly SKIP)\n\n")
 	}
 	_ = rounds; _ = bias; _ = seed
+
+	eng := paper.New(cfg) // AFTER the switch, so per-source cfg (RawEntry, gate) applies
 
 	for {
 		r, ok := src.Next()
