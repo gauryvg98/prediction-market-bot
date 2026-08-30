@@ -27,6 +27,7 @@ const (
 	JanusMaker     = "JanusXpm3gsW3c9ErNoUgHppL8dGLvZKB7uekkJEYFP"
 	BisonMaker     = "2DNbzPochEcyCcWMbL4d9S3u9QqQEj5bbe6cSZFvKsbh"
 	Token2022      = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+	Operator       = "DDucv2DeUsTsg1rfAcWAnUSUVpqfdHEzxX66ARB2JYVg"
 )
 
 // Client talks to Bitquery. Construct with New; safe for reuse.

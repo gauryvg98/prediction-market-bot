@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -152,6 +153,9 @@ func priceTx(legs []Transfer) (Fill, bool) {
 			continue
 		}
 		if l.ProgramId != Token2022 { // outcome tokens are Token-2022; skips SOL/USDC hops
+			continue
+		}
+		if strings.HasSuffix(l.Mint, "pump") { // never a World market token
 			continue
 		}
 		if l.Amount > tokByMint[l.Mint] {
@@ -308,6 +312,38 @@ func FillsFromTape(outs []Transfer, cash map[string]float64) []Fill {
 // fetch their legs in BATCHES via a signature `in` filter -- high fidelity and
 // few queries. This is what makes live reconstruction viable under rate limits.
 
+// WorldTradeSigs returns signatures of taker-initiated World trades: transactions
+// carrying a prediCt instruction whose signer is NOT the operator key. This is
+// the fix for contamination -- sourcing from ALL CASH movements also caught
+// pump.fun and other Token-2022 tokens bought with CASH. prediCt-involvement
+// guarantees the outcome leg is a real World market token.
+func (c *Client) WorldTradeSigs(ctx context.Context, sinceISO, tillISO string, limit int) ([]string, error) {
+	q := fmt.Sprintf(`{ Solana { Instructions(
+		where: { Instruction: { Program: { Address: { is: "%s" } } },
+		         Transaction: { Signer: { not: "%s" }, Result: { Success: true } },
+		         Block: { Time: { since: "%s", till: "%s" } } }
+		limit: { count: %d } orderBy: { descending: Block_Time }
+	) { Transaction { Signature } } } }`, PredictProgram, Operator, sinceISO, tillISO, limit)
+	var r struct {
+		Solana struct {
+			Instructions []struct{ Transaction struct{ Signature string } }
+		}
+	}
+	if err := c.Query(ctx, q, &r); err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	var out []string
+	for _, t := range r.Solana.Instructions {
+		s := t.Transaction.Signature
+		if !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	return out, nil
+}
+
 func (c *Client) cashSigs(ctx context.Context, sinceISO, tillISO string, limit int) ([]string, error) {
 	q := fmt.Sprintf(`{ Solana { Transfers(
 		where: { Transfer: { Currency: { MintAddress: { is: "%s" } } }, Block: { Time: { since: "%s", till: "%s" } } }
@@ -341,7 +377,7 @@ func (c *Client) legsBatch(ctx context.Context, sigs []string) (map[string][]Tra
 	inList := "[" + join(quoted, ",") + "]"
 	q := fmt.Sprintf(`{ Solana { Transfers(
 		where: { Transaction: { Signature: { in: %s } } } limit: { count: %d }
-	) { Transaction { Signature Signer } Transfer { Amount Currency { MintAddress ProgramAddress } Sender { Address } Receiver { Address } } } } }`,
+	) { Block { Time } Transaction { Signature Signer } Transfer { Amount Currency { MintAddress ProgramAddress } Sender { Address } Receiver { Address } } } } }`,
 		inList, len(sigs)*25)
 	var r struct{ Solana struct{ Transfers []rawTfHdr } }
 	if err := c.Query(ctx, q, &r); err != nil {
@@ -358,7 +394,7 @@ func (c *Client) legsBatch(ctx context.Context, sigs []string) (map[string][]Tra
 // RecentFillsBatched pulls up to `cashLimit` recent CASH signatures and prices
 // their trades in batches of 50 via the `in` filter. Returns clean priced fills.
 func (c *Client) RecentFillsBatched(ctx context.Context, sinceISO, tillISO string, cashLimit int) ([]Fill, error) {
-	sigs, err := c.cashSigs(ctx, sinceISO, tillISO, cashLimit)
+	sigs, err := c.WorldTradeSigs(ctx, sinceISO, tillISO, cashLimit)
 	if err != nil {
 		return nil, err
 	}
