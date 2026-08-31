@@ -50,6 +50,20 @@ func (l *Ledger) observe(d signal.Decision) {
 	l.SkipReasons[r]++
 }
 
+func (l *Ledger) observeFair(d signal.FairDecision) {
+	l.Evaluated++
+	if d.Enter {
+		l.Entered++
+		return
+	}
+	r := d.Reason
+	for i := 0; i < len(r); i++ {
+		if r[i] == ' ' || r[i] == ':' { r = r[:i]; break }
+	}
+	if r == "" { r = "unknown" }
+	l.SkipReasons[r]++
+}
+
 func (l *Ledger) record(e Event) {
 	l.Events = append(l.Events, e)
 	switch e.Kind {

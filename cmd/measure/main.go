@@ -51,9 +51,8 @@ func main() {
 
 	// 2) evaluate rounds as they complete, deduped, into one ledger.
 	rpc := solana.New(url)
-	cfg := paper.DefaultConfig() // real vol gate (RawEntry off)
-	cfg.Signal.MinSecondsLeft = 30   // 5-min markets, not 15
-	cfg.Signal.MaxEntryPrice = 0.60  // near-ATM shorts need a wider band
+	cfg := paper.DefaultConfig()
+	cfg.FairEntry = true // momentum/mispricing model: maker vs Chainlink-fair
 	eng := paper.New(cfg)
 	seen := map[string]bool{}
 	tick := time.NewTicker(*poll)

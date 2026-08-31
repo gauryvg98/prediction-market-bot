@@ -117,6 +117,8 @@ type Config struct {
 	Stake         float64 // paper CASH committed on the entry leg
 	HedgeDeadline float64 // seconds-to-expiry at/under which we stop waiting and go naked
 	RawEntry      bool    // book-only entry (no vol gate) -- for tape replay without per-asset spot
+	FairEntry     bool    // fair-edge entry: maker price vs Chainlink-true probability
+	Fair          signal.FairParams
 }
 
 // DefaultConfig mirrors the strict signal defaults and a $10 paper stake.
@@ -124,6 +126,7 @@ func DefaultConfig() Config {
 	return Config{
 		Fees:          market.Fees{StakeRate: 0.025},
 		Signal:        signal.DefaultParams(),
+		Fair:          signal.DefaultFairParams(),
 		Stake:         10,
 		HedgeDeadline: 20,
 	}
@@ -160,6 +163,9 @@ func (e *Engine) OnTick(t Tick) []Event {
 }
 
 func (e *Engine) tryEnter(st *roundState, t Tick) []Event {
+	if e.cfg.FairEntry {
+		return e.tryEnterFair(st, t)
+	}
 	if e.cfg.RawEntry {
 		return e.tryEnterRaw(st, t)
 	}
@@ -189,6 +195,41 @@ func (e *Engine) tryEnter(st *roundState, t Tick) []Event {
 	st.phase = OneLeg
 	ev := Event{Kind: Enter, RoundID: t.RoundID, Side: d.Side, Price: price, Qty: payout,
 		Note: d.Reason}
+	e.Ledger.record(ev)
+	return []Event{ev}
+}
+
+// tryEnterFair is the momentum/mispricing entry: buy the side the maker is
+// pricing below its true (Chainlink-implied) probability. Fills are assumed at
+// the maker's quoted price.
+func (e *Engine) tryEnterFair(st *roundState, t Tick) []Event {
+	up, uok := t.Book.Best(market.Up)
+	dn, dok := t.Book.Best(market.Down)
+	if !uok || !dok {
+		return nil
+	}
+	d := signal.EvaluateFair(t.Spot, t.Strike, t.SecondsToExpiry, t.RealizedVol, up, dn, e.cfg.Fair)
+	e.Ledger.observeFair(d)
+	if !d.Enter {
+		return nil
+	}
+	price := up
+	if d.Side == market.Down {
+		price = dn
+	}
+	if lock.RequiredHedgePrice(price, e.cfg.Fees, e.cfg.Signal.MinLockEdge) <= 0 {
+		return nil
+	}
+	payout := e.cfg.Stake / price
+	leg := &lock.Leg{Outcome: d.Side, Cost: e.cfg.Stake, Payout: payout}
+	st.entry = leg
+	if d.Side == market.Up {
+		st.pos.Up = leg
+	} else {
+		st.pos.Down = leg
+	}
+	st.phase = OneLeg
+	ev := Event{Kind: Enter, RoundID: t.RoundID, Side: d.Side, Price: price, Qty: payout, Note: d.Reason}
 	e.Ledger.record(ev)
 	return []Event{ev}
 }
