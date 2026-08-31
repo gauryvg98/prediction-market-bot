@@ -51,7 +51,10 @@ func main() {
 
 	// 2) evaluate rounds as they complete, deduped, into one ledger.
 	rpc := solana.New(url)
-	eng := paper.New(paper.DefaultConfig()) // real vol gate (RawEntry off)
+	cfg := paper.DefaultConfig() // real vol gate (RawEntry off)
+	cfg.Signal.MinSecondsLeft = 30   // 5-min markets, not 15
+	cfg.Signal.MaxEntryPrice = 0.60  // near-ATM shorts need a wider band
+	eng := paper.New(cfg)
 	seen := map[string]bool{}
 	tick := time.NewTicker(*poll)
 	defer tick.Stop()
@@ -80,6 +83,9 @@ func main() {
 		lo, hi, _ := ocl.ChainlinkSpan()
 		fmt.Printf("[measure] +%d new rounds (oracle covers %ds) | %s\n",
 			fresh, (hi-lo)/1000, eng.Ledger.Summary())
+		if len(eng.Ledger.SkipReasons) > 0 {
+			fmt.Printf("           skips: %v\n", eng.Ledger.SkipReasons)
+		}
 	}
 	evalRound()
 	for {

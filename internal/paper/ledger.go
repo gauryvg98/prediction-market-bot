@@ -15,8 +15,9 @@ type Ledger struct {
 
 	// gate diagnostics: how the entry filter behaved, so a session that never
 	// trades can still explain why.
-	Evaluated int
-	Entered   int
+	Evaluated   int
+	Entered     int
+	SkipReasons map[string]int
 
 	// terminal round tallies. A round is counted once, at its terminal event.
 	Locks      int     // hedged then merged -- guaranteed profit banked
@@ -27,13 +28,26 @@ type Ledger struct {
 	WorstRound float64 // most negative single-round P&L -- the tail, surfaced
 }
 
-func NewLedger() *Ledger { return &Ledger{WorstRound: 0} }
+func NewLedger() *Ledger { return &Ledger{SkipReasons: map[string]int{}} }
 
 func (l *Ledger) observe(d signal.Decision) {
 	l.Evaluated++
 	if d.Enter {
 		l.Entered++
+		return
 	}
+	// bucket the skip by its leading category (first token of the reason)
+	r := d.Reason
+	for i := 0; i < len(r); i++ {
+		if r[i] == ' ' || r[i] == ':' {
+			r = r[:i]
+			break
+		}
+	}
+	if r == "" {
+		r = "unknown"
+	}
+	l.SkipReasons[r]++
 }
 
 func (l *Ledger) record(e Event) {
