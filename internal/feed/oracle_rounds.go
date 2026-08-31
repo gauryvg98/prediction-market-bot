@@ -6,6 +6,7 @@ import (
 
 	"github.com/gauryvg98/prediction-bot/internal/market"
 	"github.com/gauryvg98/prediction-bot/internal/oracle"
+	"github.com/gauryvg98/prediction-bot/internal/signal"
 	"github.com/gauryvg98/prediction-bot/internal/paper"
 	"github.com/gauryvg98/prediction-bot/internal/solana"
 )
@@ -23,7 +24,12 @@ var _ OracleCtx = (*oracle.Client)(nil)
 // per tick, resolution = Chainlink at expiry vs strike (World's own oracle), and
 // realized vol from Chainlink. Only rounds the oracle history fully covers are
 // returned -- everything else is honestly skipped, not approximated.
-func BuildOracleRounds(fills []solana.Fill, ocl OracleCtx, durationSec, cadenceSec int) []*Round {
+// BuildOracleRounds turns paired World trades into contextualized rounds. When
+// modelBook is true, the maker's two-sided quote is modeled CONTINUOUSLY from
+// Chainlink (up = fair_up + vig/2, down = (1-fair_up) + vig/2) instead of from
+// sparse trade prints -- so hedge availability is realistic: it appears whenever
+// the price swings, not only when someone else happened to trade the other side.
+func BuildOracleRounds(fills []solana.Fill, ocl OracleCtx, durationSec, cadenceSec int, modelBook bool, vig float64) []*Round {
 	pairs := pairBySibling(fills)
 	var out []*Round
 	dur := int64(durationSec) * 1000
@@ -67,13 +73,23 @@ func BuildOracleRounds(fills []solana.Fill, ocl OracleCtx, durationSec, cadenceS
 			if !ok {
 				continue
 			}
+			rv := ocl.RealizedVol(t, 60)
+			bu, bd := upP, downP
+			if modelBook { // continuous maker quote from Chainlink (the fix)
+				fairUp := signal.FairProbUp(spot, strike, float64(end-t)/1000, rv)
+				bu = clip01(fairUp + vig/2)
+				bd = clip01((1-fairUp) + vig/2)
+			}
+			if bu <= 0 || bd <= 0 {
+				continue
+			}
 			ticks = append(ticks, paper.Tick{
 				RoundID: id, Spot: spot, Strike: strike,
 				SecondsToExpiry: float64(end-t) / 1000,
-				RealizedVol:     ocl.RealizedVol(t, 60),
+				RealizedVol:     rv,
 				Book: &market.Book{RoundID: id, TsMs: t, ExpiryMs: end,
-					Up:   []market.Level{{Price: upP, Size: 1e6}},
-					Down: []market.Level{{Price: downP, Size: 1e6}}},
+					Up:   []market.Level{{Price: bu, Size: 1e6}},
+					Down: []market.Level{{Price: bd, Size: 1e6}}},
 			})
 		}
 		if len(ticks) < 3 {

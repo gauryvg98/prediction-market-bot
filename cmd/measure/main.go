@@ -52,7 +52,9 @@ func main() {
 	// 2) evaluate rounds as they complete, deduped, into one ledger.
 	rpc := solana.New(url)
 	cfg := paper.DefaultConfig()
-	cfg.FairEntry = true // momentum/mispricing model: maker vs Chainlink-fair
+	cfg.RawEntry = true // buy the cheap side; hedge when the other cheapens on a swing
+	cfg.Signal.MinSecondsLeft = 20
+	cfg.Signal.MaxEntryPrice = 0.45 // "cheap" side only
 	eng := paper.New(cfg)
 	seen := map[string]bool{}
 	tick := time.NewTicker(*poll)
@@ -65,7 +67,7 @@ func main() {
 			fmt.Printf("[measure] tape error: %v\n", err)
 			return
 		}
-		rounds := feed.BuildOracleRounds(fills, ocl, *dur, 15)
+		rounds := feed.BuildOracleRounds(fills, ocl, *dur, 15, true, 0.06) // modeled continuous quote, 6% vig
 		fresh := 0
 		for _, r := range rounds {
 			id := r.Ticks[0].RoundID
