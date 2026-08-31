@@ -38,10 +38,16 @@ type Client struct {
 	binance   float64
 	clTimeMs  int64
 	bnTimeMs  int64
+	clHist    series
+	bnHist    series
+	record    bool
 	onTick    func(Tick)
 }
 
 func New() *Client { return &Client{} }
+
+// NewRecording returns a client that accumulates price history for At() queries.
+func NewRecording() *Client { return &Client{record: true} }
 
 // OnTick registers a callback fired on every price update (optional).
 func (c *Client) OnTick(f func(Tick)) { c.onTick = f }
@@ -134,7 +140,21 @@ func (c *Client) handle(data []byte) {
 	val := toFloat(m.Payload.Value)
 	ts := m.Payload.Timestamp
 	sym := m.Payload.Symbol
-	if len(m.Payload.Data) > 0 { // historical dump (type "subscribe"): latest point
+	isChainlink := contains(m.Topic, "chainlink") || contains(sym, "/")
+	if len(m.Payload.Data) > 0 { // historical dump: record EVERY point, keep the latest
+		if c.record {
+			c.mu.Lock()
+			for _, d := range m.Payload.Data {
+				if v := toFloat(d.Value); v > 0 {
+					if isChainlink {
+						c.clHist.add(d.Timestamp, v)
+					} else {
+						c.bnHist.add(d.Timestamp, v)
+					}
+				}
+			}
+			c.mu.Unlock()
+		}
 		last := m.Payload.Data[len(m.Payload.Data)-1]
 		val = toFloat(last.Value)
 		ts = last.Timestamp
@@ -149,11 +169,17 @@ func (c *Client) handle(data []byte) {
 	// rides crypto_prices / btcusdt. Route by whichever is present.
 	src := "binance"
 	c.mu.Lock()
-	if contains(m.Topic, "chainlink") || contains(sym, "/") {
+	if isChainlink {
 		src = "chainlink"
 		c.chainlink, c.clTimeMs = val, ts
+		if c.record {
+			c.clHist.add(ts, val)
+		}
 	} else {
 		c.binance, c.bnTimeMs = val, ts
+		if c.record {
+			c.bnHist.add(ts, val)
+		}
 	}
 	c.mu.Unlock()
 	if c.onTick != nil {
